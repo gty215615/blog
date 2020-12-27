@@ -1,0 +1,40 @@
+component: scf
+name: "blog" # (必填) 实例名称
+org: 	"1257768974" # (可选) 用于记录组织信息，默认值为您的腾讯云账户 APPID
+app: "blog" # (可选) 该 nuxt.js 项目名称
+stage: "dev" # (可选) 用于区分环境信息，默认值是 dev
+inputs:
+  name: API_GW_Html_Demo
+  src:  # 第二种，部署src下的文件代码，并打包成zip上传到bucket上
+    src: ./  # 本地需要打包的文件目录
+    bucket: blog-bucket # bucket name，当前会默认在bucket name后增加 appid 后缀, 本例中为 bucket01-appid
+    exclude:   # 被排除的文件或目录
+      - config
+      - images
+      - post-images
+      - posts
+      - static
+      - themes
+  description: >-
+    This demo is mainly to show how to return custom html in serverless.
+    本示例主要演示如何配置 API 网关触发器返回自定义的html页面
+  handler: index.main_handler
+  runtime: Nodejs12.16
+  namespace: default
+  region: ap-guangzhou
+  memorySize: 128
+  timeout: 3
+  events:
+     - apigw: # api网关触发器
+        name: serverless
+        serviceId: # input API gateway serviceId
+        parameters:
+          protocols:
+            - http
+          description: the serverless service
+          environment: release
+          endpoints:
+            - path: /
+              method: GET
+              function:
+                isIntegratedResponse: TRUE

@@ -1,0 +1,304 @@
+{
+  "posts": [
+    {
+      "content": "\n今天主要分析的特点：\n\n1. 无new来构建实例对象\n2. 共享原型的设计\n3. extend 方法 ，为自身以及实例对象添加方法， 以及进行对象的浅拷贝与深拷贝\n \n##  1. 无new构建jQuery实例对象 \n\njQuery 通过将jQ函数挂载到全局对象window上，并通过简写 $ 符来进行调用，在 js 产生一个实例对象需要调用 new 操作符来进行生成实例对象,所以可以通过返回一个构造函数的调用来实现无 new 构建实例，如下\n\n```javascript\n(function (root) {\n                \n    function jQuery() {\n        /**\n         *  形成死循环  \n         */\n        return new jQuery()  \n    }\n\n    root.jQuery = root.$ = jQuery\n})(this)\n\n ```\n\n但下面这种方法会出现无限循环，因此 jQuery 对其进行了优化改进，通过修改 jQuery 函数的原型添加一个 init 属性来实现\n\n```javascript\n(function (root) {\n                \n    function jQuery() {\n        /**\n         *  形成死循环  \n         */\n        return jQuery.fn.init()  \n    }\n\n        /**\n     *  重写jQuery 原型，来实现 构建无new操作符实例 ， 将jQuery的方法放在原型上\n     */\n    jQuery.prototype = {\n        /**\n         *  构建实例对象\n         */\n        init: function () {\n\n        },\n    }\n\n    /**\n    *  简写原型 \n    */\n\n    jQuery.fn = jQuery.prototype\n\n    jQuery.fn.init.prototype = jQuery.fn;\n\n    root.jQuery = root.$ = jQuery\n\n})(this)\n\n```\n\n将 init 函数的原型绑定到 jQuery 函数的原型上， 来实现原型共享，同时也达到 调用构造函数生成实例的目的\n\n## 2. extend 方法实现\n\n1. 首先分析 jQuery.extend 方法具有哪些功能\n    1. 当调用 $.extend() 方法传入一个对象时， jQuery 会将该对象的属性合并到 jQuery 自身上去\n    2. 当调用 $.fn.extend() 方法传入一个对象时， 会将该对象的属性合并到 jQuery 实例身上去\n    3. 当 $.extend() 传入多个参数时，且第一个参数为 Boolean 格式时，为深拷贝 ， 否则第一个参数必为对象\n\n首先无论是 jQuery 还是 jQuery 的实例，都会有 extend 方法；因此可以先创建一个 extend 函数挂到 jQuery 及其原型上\n\n```javascript\njQuery.extend = jQuery.fn.extend = function () {}  \n```\n\n然后就是对传入的参数进行判断处理了，根据上面的需求，对参数的个数以及首位参数的类型进行验证，判断是向 jQuery 添加属性方法还是仅仅是用来做合并对象的操作 ，代码如下 （）\n\n```javascript\n\n jQuery.extend = jQuery.fn.extend = function () {\n      \n    var target = arguments[0] || {};\n    var length = arguments.length;\n    var deep = false\n    var i = 1;  //  记录 循环的起始位置，避免造成不必要的循环。\n\n\n    if (jQuery.isBoolean(target)) {\n        deep = true;\n        target = arguments[1] || {};\n        i++\n    }\n    /**\n     *  如果target 不是复杂数据类型 ， 就要将其转为 {}；\n     */\n    if(typeof target !== 'object'){\n        target = {};\n    }\n\n    /**\n      *  如果仅有一个参数，代表着向 jQuery 或者 jQuery 实例上去添加属性方法\n      */  \n    if (i === length) {\n        target = this;\n        i--\n    }\n\n    for (; i < length; i++) {\n        var option = arguments[i];\n        for (var name in option) {\n          target[name] = option[name]\n        }\n    }\n    return target\n\n}\n\n```\n\n当进行深拷贝时，就需要额外的添加一些判断逻辑， 来验证待拷贝的目标是否是复杂数据类型 以及与拷贝的目标的数据格式是否统一，如果格式不一致就要修改拷贝目标的格式了。完整代码如下\n\n```javascript\n\n(function(root) {\n    /**\n     *  jQuery 特点 \n     * \n     * 1. 无new 构建实例对象\n     * \n     * 2. 共享原型\n     * \n     * 3. extend 拓展\n     * \n     */\n    function jQuery() {\n        /**\n         *  形成死循环  \n         */\n        // return new jQuery()  \n        return new jQuery.prototype.init()\n    }\n    /**\n     *  重写jQuery 原型，  来实现 构建无new操作符实例 ， 将jQuery的方法放在原型上\n     */\n    jQuery.prototype = {\n            /**\n             *  构建实例对象\n             */\n            init: function() {\n\n            },\n            html: function() {\n\n            },\n            css: function() {\n\n                }\n                //  ...\n        }\n        /**\n         *  简写原型 \n         */\n    jQuery.fn = jQuery.prototype\n        /**\n         *  实现原型 共享 原型\n         */\n    jQuery.fn.init.prototype = jQuery.fn;\n    /**\n     *  extend \n     * \n     * 1. 可以给任意多个对象合并\n     * \n     * 2. 可以拓展jQuery本身\n     * \n     * 3. 可以拓展jQuery实例方法\n     */\n    jQuery.extend = jQuery.fn.extend = function() {\n        /**\n         * 参数分为多种情况 \n         * \n         * 1. 有多个参数时 \n         *      1. 第一个参数为 boolean 且为true 时  则代表要进行深拷贝\n         *      \n         *      2. 否则第一个参数必为对象\n         * \n         * 2. 只有一个参数时\n         *      \n         *      1. 代表着给jQuery本身 / jQuery 实例 添加拓展方法\n         * \n         */\n        var target = arguments[0];\n        var length = arguments.length;\n        var deep = false\n        var i = 1;\n\n        if (Object.prototype.toString.call(target).slice(8, -1) === 'Array') {\n            deep = true;\n            target = arguments[1]\n            i++\n        }\n        if (typeof target != 'object') {\n            target = {}\n        }\n        if (i === length) {\n            target = this;\n            i--\n        }\n        for (; i < length; i++) {\n            var option = arguments[i];\n            for (var name in option) {\n                var copy = option[name];\n                var src = target[name];\n                var isArray = Object.prototype.toString.call(copy).slice(8, -1) === 'Array';\n                var isObject = Object.prototype.toString.call(copy).slice(8, -1) === 'Object'\n                var clone = {};\n                if (deep && (isArray || isObject)) {\n                    if (isArray) {\n                        clone = Object.prototype.toString.call(src).slice(8, -1) === 'Array' ? src : [];\n                    } else if (isObject) {\n                        clone = Object.prototype.toString.call(src).slice(8, -1) === 'Object' ? src : {}\n                    } else {\n                        clone = src\n                    }\n                    target[name] = jQuery.extend(deep, clone, copy)\n                } else if (copy !== undefined) {\n                    target[name] = copy\n                }\n            }\n        }\n\n        return target\n    }\n    jQuery.extend({\n        isPlainObject: function(data) {\n            return Object.prototype.toString.call(data).slice(8, -1) === 'Object'\n        },\n        isFunction: function(fn) {\n            return Object.prototype.toString.call(fn).slice(8, -1) === 'Function'\n        },\n        isArray: function(data) {\n            return Object.prototype.toString.call(data).slice(8, -1) === 'Array'\n        },\n        isBoolean: function(data) {\n            return Object.prototype.toString.call(data).slice(8, -1) === 'Boolean'\n        },\n    })\n\n\n    //  将jQuery挂载到window（全局变量）上\n    root.jQuery = root.$ = jQuery\n})(this)\n\n```\n\n\n\n\n\n\n\n\n\n\n",
+      "data": {
+        "title": " jQuery 核心函数",
+        "date": "2020-11-23 19:43:25",
+        "tags": [
+          "jQuery",
+          "Javascript"
+        ],
+        "published": true,
+        "hideInList": false,
+        "feature": "https://tva3.sinaimg.cn/large/0072Vf1pgy1foxkcwa5wxj31hc0u04hn.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "",
+      "fileName": "jquery-he-xin-han-shu"
+    },
+    {
+      "content": "### git remote 的使用方法\n1. 创建好项目之后使用 git init ;\n2. git remote -v 查看仓库的远程\n3. 使用 git remote add origin 远程仓库链接\n4. git remote -v 再次查看仓库的远程\n5. git add ./ 添加要提交的文件\n6. git commit -m ‘提交名称’\n7. 提交前先拉一下远程仓库，git pull origin master；\n8. 若有冲突使用git merge origin/master --allow-unrelated-histories合并冲突\n9. git push -u origin master 推送到远程仓库\n\n### 创建分支\n1. git checkout -b 分支名\n2. git branch",
+      "data": {
+        "title": "git 的使用方法",
+        "date": "2020-04-01 14:16:27",
+        "tags": [],
+        "published": true,
+        "hideInList": true,
+        "feature": null,
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "",
+      "fileName": "git-remote-de-shi-yong-fang-fa"
+    },
+    {
+      "content": "在 js 中 new 操作符到底实现什么，在经过网上查询之后我总结了一下，留做笔记。\n\n首先，试一下原生 js 中的 new 的作用\n\n```javascript\nfunction Person(name , age) {\n    this.name = name,\n    this.age = age\n}\n\nPerson.prototype.sayName = function(){\n    console.log(this.name)\n}\nlet per = new Person( '小明', 12 )\n\nconsole.log(per)\nper.sayName()\n\n// Person { name: '小明', age: 12 }\n// 小明\n\n```\n\n由上面可以看出 js 中的 new 操作符在 new 的过程中：\n1. 创建一个以构造函数的原型为原型的对象即 Object.create(Person.prototype)\n2. 将构造函数的 this 绑定到上一步所创建的对象上\n3. 返回创建的对象\n   用代码实现：\n```javascript\n\nfunction myNew(parent , ...arg){\n    // 创建一个以构造函数的原型为原型的空对象\n    let obj = Object.create(parent.prototype);\n    // 绑定构造函数的 this 到新对象上\n    parent.apply(obj,arg)\n    // 返回新创将的对象\n    return obj\n}\n\nlet per1 = myNew(Person,'小明', 12)\n\nconsole.log(per)\nper.sayName()\n// Person { name: '小明', age: 12 }\n// 小明\n\n\n```",
+      "data": {
+        "title": "Javascript 中的 new 操作符",
+        "date": "2020-03-30 10:50:18",
+        "tags": [],
+        "published": true,
+        "hideInList": true,
+        "feature": "https://tva2.sinaimg.cn/large/0072Vf1pgy1foxk6mvbgfj31kw0w01cd.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "",
+      "fileName": "javascript-zhong-de-new-cao-zuo-fu"
+    },
+    {
+      "content": "\n## 盒模型\n\n1. 标准盒模型\n    盒子的实际宽度 = width + padding + border + margin\n    width = content\n2. IE 的怪异盒模型\n    盒子的实际宽度 = width + margin \n    width = content + padding + border\n3. 可以使用 box-sizing属性来切换盒模型\n\n## 布局\n\n1. 定位布局 （position： static 、 relative 、 absolute 、 fixed 、 sticky  ）\n    > 1. 默认为 static\n    > 2. relative ： 相对定位 相对于自身之前的位置移动来进行定位\n    > 3. absolute ： 绝对定位 相对于父级部位 static 的元素来进行定位\n    > 4. fixed：固定定位 相对于浏览器窗口来进行定位\n    > 5. sticky：粘性定位 固定定位于绝对定位的结合  \n2. 流布局，就是使用百分比布局，通常配合 max-/min-来进行约束， 根据浏览器窗口的分辨率来进行调节显示元素的大小，\n使得整体布局不变 。\n    缺点： 在屏幕过大或过小情况下导致元素显示不正常 \n3. 浮动布局 ：使用 float 属性，使元素脱离文档流浮动，但不会脱离文本流，因此可以\n实现文字环绕的效果，会导致很多问题\n    常用清除浮动方法：\n    > 1. 额外标签法：在父元素末尾添加一个空标签加上 clear：both；\n    > 2. 触发BFC overflow：hidden；会导致溢出部分被隐藏\n    > 3. 使用 css3 的伪元素来清除浮动\n4. 圣杯布局 ： 利用负边距于相对定位来进行布局，形成左右两边固定中间位置自适应的三栏布局\n5. flex 布局\n```css\n     1. 父元素设置flex 属性后，子元素的float、clear、vertical-align 将失效\n     2. flex-direction:  决定主轴方向\n        1. row 从左往右 ，\n        2. row-reverse 从右往左\n        3. column 从上往下\n        4. column-reverse 从下往上\n     3. flex-wrap: 元素换行方式\n        1. nowrap （默认）不换行\n        2. wrap 换行，第一行在上方\n        3. wrap-reverse 换行，第一行在下方\n     4. justify-content 在主轴上的对齐方式\n        1. flex-start（默认值）：左对齐\n        2. flex-end：右对齐\n        3. center： 居中\n        4. space-between：两端对齐，元素之间的间隔都相等。\n        5. space-around：每个元素两侧的间隔相等。所以，元素之间的间隔比元素与边框的间隔大一倍。\n     5. align-items 交叉轴上的对齐方式\n        1. flex-start：交叉轴的起点对齐。\n        2. flex-end：交叉轴的终点对齐。\n        3. center：交叉轴的中点对齐。\n        4. baseline: 元素的第一行文字的基线对齐。\n        5. stretch（默认值）：如果元素未设置高度或设为auto，将占满整个容器的高度。 \n     6. align-content 多根轴线的对齐方式，若只有一根轴线则不起作用\n     7. flex-grow 元素的放大比例 \n     8. flex : 是flex-grow（放大比例）, flex-shrink（缩小比例） 和 flex-basis（基础占用空间）\n     9. align-self: 可以用来覆盖 align-items 的属性，来设置单个元素的对齐方式\n```\n6. grid 布局\n```css\n     1. 父元素设置grid 属性后，子元素的float、display: inline-block、display: table-cell、vertical-align和column-* 将失效\n     2. grid-template-columns:指定每列列宽，grid-template-rows：指定每行行高\n     3. auto-fill 自动填充，直到装不下下一个单元格\n     4. fr( fraction:片段 ) 是单元格比例关系\n     5. grid-gap 设置行列间隔，为 grid-row-gap 与grid-column-gap 的缩写\n    待续。。。\n```\n7. BFC 块格式化上下文 (Block Formatting Context) \n    > 1. 创建：\n            1. 浮动元素 (元素的 float 不是 none)\n            2. 绝对定位元素 (元素具有 position 为 absolute 或 fixed)\n            3. 内联块 (元素具有 display: inline-block)\n            4. 表格单元格 (元素具有 display: table-cell，HTML表格单元格默认属性)\n            5. 具有overflow 且值不是 visible 的块元素，\n    > 2. 作用：\n            1. 清除浮动\n            2. 产生边界(与浮动元素)\n            \n8. 数据存储 （ cookie、sessionStorage、localStorage ）\n     >1. cookie : 会话 cookie 不设置过期时间，关闭浏览器窗口失效\n                  设置过期时间，超过时间，cookie 失效\n                 特点： 每次请求浏览器会将 cookie 通过 http 的请求头发送给服务端，安全性能低，浪费带宽，且 cookie只能存储 4kb 数据，\n                 还只能是文本字符串\n                 \n     >2. sessionStorage : 浏览器本地存储，大小 5M ，当浏览器窗口关闭则失效，也是会话级存储，\n     >3. localStorage: 浏览器本地存储，大小 5M，浏览器窗口关闭不会消失，除非手动清除，否则永久存在。\n     >4. 相对于 cookie 而言 webStorage的安全性更高且不会发送给服务器，并且浏览器有提供操作的 api，更加便于操作。\n9.  animation和transiton的相关属性 \n     >1. animation ( 动画名称，动画播放时间，动画速度曲线，动画延迟时间，动画播放次数，动画是否反向播放 )\n     >2. transiton ( 过度属性名称，过度时间，过度曲线 ，过度延迟时间 )\n\n# JavaScript\n    \n## 数据类型\n1. 基础数据类型\n```javascript\n        1. number\n            - typeof NaN  // number\n        2. string\n        3. boolean\n        4. symbol\n            - Symbol 实例是唯一存在的的\n            - 主要用来作为对象键名的标识符\n            - 以 Symbol 作为标识符的键名，不可以被枚举，可以通过 getOwnPropertySymbols 来查询到\n        5. undefined\n            - typeof undefined  // undefined\n        6. null\n            - typeof null // object\n```\n2. 引用数据类型\n```javascript\n        1. Object\n        2. Array\n        3. Function\n        ...\n```\n##  作用域\n1. 作用域链：\n        1. 在 JavaScript 中函数会形成一个单独的作用域，整个作用域是由全局作用域以及每一个函数形成的作用域所组成，在外部的作用域不能访问内部作用域\n        中的变量，而在内部作用域可以访问其外部作用域中的变量，在 js 中，若调用一个变量，会首先在当前作用域中查找，如果没找到就会去上一级作用域中查找\n        一直到查找到顶级也就是全局作用域，若没找到，则会提示' 变量名 is not defined' ，在这每一级的查找过程中，作用域形成了链式结构，便叫做作用域\n        链\n    2. 闭包：闭包是由函数以及创建该函数的词法环境所组成的，这个词法环境就是这个函数创建时所能访问到的所有的局部变量。\n        1. 闭包作用：\n            1. 常用于变量的私有化。\n            2. 保存外部变量，被闭包所引用的外部变量不会被 js 引擎回收\n        2. 缺点：\n            1. 大量使用闭包会造成内存泄漏，影响性能，造成网页卡顿。 ( 解决方法： 手动删除被闭包引用的局部变量 )\n##  JavaScript继承\n\n1. 构造函数继承\n    >  使用 call、apply 来实现\n```javascript\n            function Person(name){\n                 this.name = name;\n                 this.species = 'people'\n            }\n            function Man(name ,sex){\n                Person.apply(this,arguments);\n                this.sex = sex\n            }\n            const a = new Man('a','男')\n            \n            console.log(a)  // Man { name: 'a', species: 'people', sex: '男' }\n```  \n缺点： \n    1. 每个实例都拷贝一份父类的方法，占用内存大，尤其是方法过多的时候，因此可以用原型继承来解决占用内存过大的窘境）\n    2. 当需求变更要修改方法时，之前所生成的实例方法是无法及时更新的。\n            \n        \n        \n2. 原型继承   \n    1. 原型链： \n```javascript\n                function Person(name){\n                       this.name = name;\n                }\n                Person.prototype.color = 'yellow';\n                \n                // 构造函数 Person 的prototype 属性指向 一个对象，这个对象就是 Person 的原型，\n                const mash = new Person('mash');\n                console.log(mash.name) // mash\n                console.log(mash.color) // yellow\n                \n                //  由构造函数 Person 生成的实例 mash 拥有 color 属性， 这个属性继承自 Person.property\n                //  即实例会继承原型上的属性。 与此同时，实例 mash 的__proto__属性指向构造函数原型，可以访问到原型上的属性\n                //  由于构造函数的原型 Person.prototype 是一个对象，它也会拥有创造它的构造函数，也会有原型，因此它也可以访问它的原型上的属性，\n                //  由此一层一层往上形成一条原型链，原型链的顶端为 null（null 在js 中也是一个对象）。\n                \n                //  在js 中查找对象的属性时有一条这样的查找规则:当对象本身没有这个属性的时候，js 引擎会查找该对象的原型，并顺着原型链一级一级的找上去\n                //  直到找到 null 为止，如果没找到，则会显示为 undefined；\n```\n  1. 原型继承：即将子类的原型链接到父类的实例上即可实现原型继承 \n```javascript\n                  function Person(name){\n                          this.name = name;\n                  }\n                  Person.prototype.sayHello = function(){ console.log('Hello '+ this.name) } ;\n                  \n                  function Student(level){\n                        this.level = level;\n                  }\n                  \n                  Student.prototype = new Person( '小明' )\n                  Student.prototype.constructor = Student;\n                  const x = new Student(1)\n                  \n                  console.log(x.name) // 小明\n```\n缺点： 在上方的实现中重写了 Student 的原型指向，这就会导致重写之前所创建的实例仍然指向之前的原型.\n             \n3. 组合继承\n    > 为了解决以上两种继承所展现出的问题，可以使用组合的方式来避免他们各自的缺陷。\n```javascript\n             function Person(name){\n                  this.name = name;\n             }\n             Person.prototype.sayHello = function(){ console.log('Hello '+ this.name) } ;\n                              \n             function Student(level){\n                    Person.apply(this,arguments)  // 第二次调用构造函数\n                    this.level = level;\n             }\n                              \n             Student.prototype = new Person( '小明' )    // 第一次调用构造函数\n             Student.prototype.constructor = Student;\n             const x = new Student(1) \n                              \n             console.log(x.name) // 小明\n```\n缺点：无论在什么情况下，都会调用两次父类构造函数：一次是在创建子类型原型时，另一次是在子类型构造函数内部。  \n           \n4. 寄生继承 : 寄生继承就是不用实例化父类了，直接实例化一个临时副本实现了相同的原型链继承。（即子类的原型指向父类副本的实例从而实现原型共享）\n```javascript\n            function Training(child,person){\n                const newPerson = function(){};\n                newPerson.prototype = person.prototype\n                child.prototype = new newPerson()\n                child.prototype.constructor = child;\n            }\n            function Person(name){\n                this.name = name;\n            }\n            Person.prototype.sing = function () {\n                console.log('sing song')\n            }\n             function Student(age){\n                  this.age = age;\n             }\n            Training(Person)\n            const b = new Student(1)\n            \n            b.sing()\n```\n5. 寄生组合继承： \n    1. 使用构造函数方式继承属性\n    2. 使用原型继承方式继承方法\n    3. 使用寄生继承方式避免调用两次父类构造函数\n```javascript\n              function extend(child,parent){\n                             const newPerson = function(){};\n                             newPerson.prototype = person.prototype\n                             child.prototype = new newPerson()\n                             child.prototype.constructor = child;\n                         }\n                         function Person(name){\n                             this.name = name;\n                         }\n                         Person.prototype.sing = function () {\n                             console.log('sing song')\n                         }\n                        function Student(name,level){\n                            Person.call(this,arguments);\n                            this.level=level\n                        }\n                        extend(Student,Person)\n```\n                              \n## 前端跨域解决：（JSONP，CORS）  \nHTTP 响应中包含一个状态码，用来表示服务器对客户端响应的结果。\n状态码一般由3位构成：\n\n1xx : 表示请求已经接受了，继续处理。\n2xx : 表示请求已经处理掉了。\n3xx : 重定向。\n4xx : 一般表示客户端有错误，请求无法实现。\n5xx : 一般为服务器端的错误。\n\n比如常见的状态码：\n\n200 OK 客户端请求成功。\n301 Moved Permanently 请求永久重定向。\n302 Moved Temporarily 请求临时重定向。\n304 Not Modified 文件未修改，可以直接使用缓存的文件。\n400 Bad Request 由于客户端请求有语法错误，不能被服务器所理解。\n401 Unauthorized 请求未经授权，无法访问。\n403 Forbidden 服务器收到请求，但是拒绝提供服务。服务器通常会在响应正文中给出不提供服务的原因。\n404 Not Found 请求的资源不存在，比如输入了错误的URL。\n500 Internal Server Error 服务器发生不可预期的错误，导致无法完成客户端的请求。\n503 Service Unavailable 服务器当前不能够处理客户端的请求，在一段时间之后，服务器可能会恢复正常。\n\n作者：只会番茄炒蛋\n链接：https://juejin.im/post/5e3d898cf265da5732551a56\n来源：掘金\n著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。   \n1. 跨域的原因：\n由于浏览器的同源策略即当（端口、协议、域名）相同时两个脚本才可以进行交互\n2. JSONP 实现跨域\nJSONP原理： \n> 利用script标签不受同源策略的限制，向后端请求 js 文件，后端返回的 js 文件内包含一个函数的调用，并且会传回前端所需要的数据作为参数，只需现在前端页面预先写好需要后端执行的函数体即可\n3. CORS（跨域资源共享）\n    > 简单请求：\n    > 请求方法（ HEAD，GET，POST ）\n    > http 头信息字段  （ Accept，Accept-Language，Content-Language， Last-Event-ID，Content-Type （不为 application/json）  ） \n    > 同时符合以上两种情况都为简单请求\n                \n1. CORS 是在 http 请求头上添加额外的信息，使得 web 可以被允许访问不同源的资源+\n2. 头部信息：\n    - request：\n    1. 对于简单请求：\n        浏览器会在 http 请求头上加一个 origin 的字段传递当前的源信息（域名、端口、协议），若源被后端服务器允许则响应头 会被加上\n        Access-Control-Allow-Origin 的字段，若不被服务器允许，则无此字段，会被XMLHttpRequest的onerror回调函数捕获\n    - response：\n    1. Access-Control-Allow-Origin： 用来指定那些域名的客户端可以访问本服务器上的资源，当请求头携带有 cookie 时不可以使用*，\n    2. Access-Control-Allow-Credentials ： 若服务器支持通过 cookie传递验证信息，则该选项变回存在的返回数据里，只有一个值就是true，于此同时在前端也要打开withCredentials字段,即：\n```javascript\n   var xhr = new XMLHttpRequest();\n   xhr.withCredentials = true;\n```\n否则即使服务器同意发送 cookie，浏览器也不会发送\n1. Access-Control-Allow-Headers 服务器支持的请求数据类型\n2. Access-Control-Allow-Methods 服务器支持的请求类型\n对于非简单请求，浏览器会发送一个预检请求，当预检请求通过后服务端会返回一个Access-Control-Max-Age字段，表示预检请求的过期时间，在此时间内，非简单请求与简单请求一样\n                    \n相比于 JSONP，CORS功能更强大，支持方法更多，JSONP 仅仅支持 GET 方法，JSONP 优势在与某些不支持 CORS 的老版本浏览器\n            \n## 节流、防抖   \n1. 节流 （throttle）： 事件在一定时间内仅仅执行一次\n                \n```javascript\n            function throttle(fn ,wait){\n                let timer = true\n                return function () {\n                    if(!timer){\n                        return\n                    }\n                    timer = false;\n                    setTimeout(()=>{\n                        fn.apply(this,arguments)\n                        timer = true;\n                    },wait)\n                }\n            }\n```\n2. 防抖（debounce）： 触发事件后一定时间内仅执行一次，若多次触发，重新计算时间\n```javascript\n            function debounce(fn,wait) {\n                let timer = null;\n                return function () {\n                    clearTimeout(timer)\n                    timer = setTimeout(()=>{\n                        fn.apply(this,arguments)\n                    },wait)\n                }\n            }\n ```\n\n ### Vue\n1. vuex是一个专为vue.js应用程序开发的状态管理器，它采用集中式存储管理应用的所有组件的状态，并且以相\n应的规则保证状态以一种可以预测的方式发生变化。\n\nstate: vuex使用单一状态树，用一个对象就包含来全部的应用层级状态\n\nmutation: 更改vuex中state的状态的唯一方法就是提交mutation\n\naction: action提交的是mutation，而不是直接变更状态，action可以包含任意异步操作\n\ngetter: 相当于vue中的computed计算属性\n\n2. Vue是采用数据劫持配合发布者-订阅者模式，通过Object.defineProperty来()来劫持各个属性的getter和setter\n在数据发生变化的时候，发布消息给依赖收集器，去通知观察者，做出对应的回调函数去更新视图。\n\n具体就是：\nMVVM作为绑定的入口，整合Observe,Compil和Watcher三者，通过Observe来监听model的变化\n通过Compil来解析编译模版指令，最终利用Watcher搭起Observe和Compil之前的通信桥梁\n从而达到数据变化 => 更新视图，视图交互变化(input) => 数据model变更的双向绑定效果。\n### css3\n1.过渡 transition\n2.动画 animation\n3.形状转换 transform\n4.阴影 box-shadow\n5.滤镜 Filter\n6.颜色 rgba\n7.栅格布局 gird\n8.弹性布局 flex\n### computed 与 watch区别\n①从属性名上，computed是计算属性，也就是依赖其它的属性计算所得出最后的值。watch是去监听一个值的变化，然后执行相对应的函数。\n②从实现上，computed的值在getter执行后是会缓存的，只有在它依赖的属性值改变之后，下一次获取computed的值时才会重新调用对应的getter来计算。watch在每次监听的值变化时，都会执行回调。其实从这一点来看，都是在依赖的值变化之后，去执行回调。很多功能本来就很多属性都可以用，只不过有更适合的。如果一个值依赖多个属性（多对一），用computed肯定是更加方便的。如果一个值变化后会引起一系列操作，或者一个值变化会引起一系列值的变化（一对多），用watch更加方便一些。\n③watch的回调里面会传入监听属性的新旧值，通过这两个值可以做一些特定的操作。computed通常就是简单的计算。\n④watch和computed并没有哪个更底层，watch内部调用的是vm.$watch，它们的共同之处就是每个定义的属性都单独建立了一个Watcher对象。\n\n                         \n            \n              \n        \n              ",
+      "data": {
+        "title": "面试总结",
+        "date": "2020-02-24 16:19:44",
+        "tags": [],
+        "published": true,
+        "hideInList": true,
+        "feature": "https://tva4.sinaimg.cn/large/87c01ec7gy1frmmnrncphj21hc0u07wj.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "",
+      "fileName": "mian-shi-zong-jie"
+    },
+    {
+      "content": "> Symbol类型是ES6新添加的一种基本数据类型，具有自己的静态属性与静态方法。并且其静态方法会暴露出全局的Symbol注册表。Symbol是一个不完整的构造函数，因为他不能通过new Symbol()来创建Symbol的实例。Symbol创建的值是唯一的，所以它仅有的目的就是为对象作为私有属性的标识符。\n\n1. Symbol创建实例,且每个Symbol的实例都是独一无二的。\n   \n```javascript\nvar symbol = Symbol();\nvar symbol1 = Symbol(\"foo\");\nconsole.log(Symbol(\"aaa\") === Symbol(\"aaa\"))\n// Symbol()\n// Symbol(foo)\n// false\n\n```\n\n2. Symbol.for(token) 与 Symbol.keyFor(Symbol);\n   Symbol.for(token) 方法回去Symbol全局注册表中查找是否存在有传入的token字符串所生成的Symbol实例，若有则会返回找到的Symbol实例；若没有则会创建一个新的Symbol实例注册到全局的Symbol注册表中并返回新生成的Symbol实例。\n```javascript\nvar a = Symbol.for(\"a\");\nvar e = Symbol.for(\"a\");\nconsole.log(a === e)\n// true\n```\n   Symbol.keyFor(Symbol)方法，在全局注册表中寻找传入的Symbol实例是否存在，若存在则返回生成该实例的token字符串，若不存在，则返回undefined。\n```javascript\nvar a = Symbol.for(\"a\");\nconsole.log(Symbol.keyFor(a) === \"a\")\n// true\n```\n3. Symbol作为对象的属性的标识符时，是不可以被枚举的，对象的getOwnPropertyNames方法也不能取到该属性，可以通过getOwnPropertySymbols方法来取到对象的全部以Symbol实例作为标识符的属性。\n```javascript\nvar age = Symbol.for(\"age\");\nvar obj = {};\nobj[age] = 20;\nobj[\"name\"] = \"小明\";\nobj[\"sex\"] = \"男\";\nfor(var k in obj){\n    console.log(obj[k]);\n}\nconsole.log(Object.getOwnPropertyNames(obj));\nconsole.log(Object.getOwnPropertySymbols(obj));\n// 小明\n// 男\n// [ 'name', 'sex' ]\n// [ Symbol(age) ]\n   ```\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+      "data": {
+        "title": "Javascript基本数据类型之Symbol",
+        "date": "2020-01-06 10:37:12",
+        "tags": [
+          "Javascript"
+        ],
+        "published": true,
+        "hideInList": false,
+        "feature": "https://tva4.sinaimg.cn/large/0072Vf1pgy1foxkj5gmcmj31hc0u0wvj.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "",
+      "fileName": "javascript-ji-ben-shu-ju-lei-xing-zhi-symbol"
+    },
+    {
+      "content": "> bind 强制改变函数内部this指向，并返回一个函数，故其并不会立即执行\n> apply 强制改变函数内部运行时this指向，立即执行，其第二个参数为一个数组\n> call 强制改变函数内部运行时this指向，立即执行，其后从第二个参数开始，每一个参数将传入函数中作为参数执行。\n1. call 函数实现\n    \n首先，call函数有两个基础功能，一，会将函数的this指向为目标对象，如果没有目标对象就会指向window（浏览器中）全局对象，第二个就是call会立即执行。因此可以将其看做事将这个目标对象添加一个属性指向当前函数然后立即执行，最后将其添加的属性删除。\n\n```javascript   \n    var obj = {\n    name:1\n    }\n    function getname(sex,age) {\n    console.log(this.name)\n    }\n    getname.call(obj) //  1\n    // this指向改变了\n    // getname函数被执行了\n```\n\n接着，call函数还可以向函数中添加参数，可以通过函数的默认arguments属性来获取函数接收到的属性，代码如下\n\n```javascript\n    function getname(sex,age) {\n    console.log(this.name)\n    console.log(sex)\n    console.log(age)\n    }\n    Function.prototype.call3 = function (context) {\n    context.fn = this;\n    var args = []\n    for(var i = 1;i<arguments.length;i++){\n    args.push(\"arguments[\"+i+\"]\")\n    }\n    eval(\"context.fn(\"+args+\")\") \n    delete context.fn\n    }\n    getname.call3(obj,\"男\",25)  // 1 男  25\n```\n2. 对于apply实现方式与call类似，只不过要判断第二个参数是否存在，实现代码如下\n```javascript\n    Function.prototype.myapply = function (context) {\n    context.fn = this;\n    var arr = arguments[1]\n    var args = []\n    if(!arr){\n        context.fn()\n    }else{\n        for(var i = 0;i<arr.length;i++){\n            args.push(\"arr[\"+i+\"]\")\n        }\n        eval(\"context.fn(\"+args+\")\") \n    }\n    delete context.fn\n}\n\n```\n3. bind的实现，bind的实现是在apply的基础上实现的，先来分析bind有哪些功能\n    1. 首先bind的会返回一个函数，它不会立即执行\n    2. 其次bind可以传入参数\n    3. bind的返回值可以当做一个构造函数，调用new方法可以生成实例\n    第一步先实现会返回一个函数，执行可以看见改变this后指向的结果\n```javascript\n    obj = {\n    name:\"Mosh\"\n    }\n    function getInfo(params) {\n    console.log(this.name)\n    }\n    Function.prototype.myBind = function (context) {\n    const _self = this;\n    return function fn(params) {\n    _self.apply(context)\n    }\n    }\n    var objFn = getInfo.myBind(obj)\n    objFn()  // Mosh\n\n```\n由于原生js的bind实现方法可以在调用bind的方法的时候传入参数，也可以在调用bind返回函数执行的时候传入参数，因此要讲两次的参数组合起来，代码如下\n\n```javascript\n    obj = {\n    name:\"Mosh\"\n    }\n    function getInfo(sex,age) {\n    console.log(this.name)\n    console.log(sex)\n    console.log(age)\n\n    }\n\n    Function.prototype.myBind = function (context) {\n    const _self = this;\n    const args = [].slice.call(arguments,1);\n    return function fn(params) {\n    _self.apply(context,args.concat([].slice.call(arguments)))\n    }\n    }\n    var objFn = getInfo.myBind(obj,15)\n    objFn(\"男\") \n    //  Mosh\n    //  15\n    //  男\n```\n然后还有一个最重要的就是构造函数模式的实现，在该模式下由bind模式生成的函数通过new 方法构造的实例，会继承原函数上的所有属性，以及传入的全部参数，只是绑定的this指向失效，重新指向了新生成的实例上，实现代码如下：\n```javascript\n    obj = {\n    name:\"Mosh\"\n    }\n    function getInfo(sex,age) {\n    console.log(this.name)\n    console.log(sex)\n    console.log(age)\n    }\n    getInfo.prototype.type = 'function'\n    Function.prototype.myBind = function (context) {\n    const _self = this;\n    const args = [].slice.call(arguments,1);\n    function Fn(params) {\n    _self.apply( this instanceof Fn ? this : context,args.concat([].slice.call(arguments)))\n    }\n    var NewFn = this.prototype\n    Fn.prototype = new newFn()\n    return Fn\n    }\n    var objFn = getInfo.myBind(obj,15)\n    var newObj = new objFn(\"男\")\n    console.log(newObj.type);\n    //undefined\n    //15\n    //男\n    //function\n\n```\n最后，就是一些细节处理。如果调用bind的不是函数，要报错，完整代码如下：\n```javascript\n    Function.prototype.myBind = function (context) {\n    if(typeof this !== \"function\"){\n    throw new Error();\n    }\n    const _self = this;\n    const args = [].slice.call(arguments,1);\n    function Fn(params) {\n    _self.apply( this instanceof Fn ? this : context,args.concat([].slice.call(arguments)))\n    }\n    var NewFn = this.prototype\n    Fn.prototype = new newFn()\n    return Fn\n    }\n```\n\n    ",
+      "data": {
+        "title": "call、apply与bind的区别",
+        "date": "2020-01-05 08:32:09",
+        "tags": [
+          "Javascript"
+        ],
+        "published": true,
+        "hideInList": false,
+        "feature": "https://tva4.sinaimg.cn/large/0072Vf1pgy1foxkfkejbbj31hc0u0k7e.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "",
+      "fileName": "callapply-yu-bind-de-qu-bie"
+    },
+    {
+      "content": "> 树，是一种递归的数据机构，具有一种分层的逻辑结构，适用于表示具有层次关系结构的数据；\n\n\n<!-- more -->\n\n### 1.树的定义\n树是具有n的节点的有限集合，当n=0时，表示空树。任何树都应该具有：\n1. 当树非空时，一棵树有且仅有一个根节点\n2. 除根结点外任一元素只有一个前驱节点\n3. 所有节点都可以具有零个或多个后继节点\n\n### 2.二叉树\n定义：每个节点仅有两个后继节点，并且后继节点有左右之分，是有次序之分。\n\n#### 1.二叉树的链式存储结构\n\n```c++\n    typedef int ElemType;\n    typedef struct BitNode *BitTree;\n    struct BitNode\n    {\n        ElemType data;\n        BTree lchild, rchild;\n        /* data */\n    };\n    typedef BitTree BTree;\n\n```\nps:在二叉树的链式表示中，若存在n个节点，则具有n+1个空链域。\n\n#### 2.二叉树的遍历\n二叉树的遍历分为先序遍历、中序遍历、后序遍历以及层次遍历。\n    * 先序遍历：先访问树的根结点再先序遍历该节点的的左子树最后先序遍历该节点的右子树；即顺序为根->左->右\n    * 中序遍历：先中序遍历根节点的的左子树再访问树的根结点最后中序序遍历该节点的右子树；即顺序为左->根->右\n    * 后序遍历：先后序遍历根节点的的左子树再后序序遍历该节点的右子树最后访问树的根结点；即顺序为左->右->根\n```c++\n    void PreOrder(BTree &T)\n        {\n            if (T != NULL)\n            {\n                // Visit(T);  先序遍历\n                PreOrder(T->lchild);\n                // Visit(T);  中序遍历\n                PreOrder(T->rchild);\n                // Visit(T);  后序遍历\n            }\n        }\n```\n以上为使用递归的方式完成的先、中、后序的遍历，除了使用递归的方式外还可以使用循环的方式来实现遍历，此时就需要借助栈来实现\n\n\n```c++\nvoid InOrder(BTree T)\n{\n    Stack s;\n    InitStack(s); // 初始化栈\n    BTree t = T;\n    while (t || !StackEmpty(s)) // 节点存在或者栈不为空执行循环\n    {\n        if (t)  // 若节点存在，将节点压入栈中，之后遍历左子树\n        {\n            Push(s, t);  \n            t = t->lchild;\n        }\n        else  // 若节点不存在，将节点从栈中弹出，访问，之后遍历右子树\n        {\n            Pop(s, t);\n            Visit(t);\n            t = t->rchild;\n        }\n        /* code */\n    }\n}\n```\n\n以上为中序遍历的非递归实现方式，其中是借助栈来实现的，而对于层次遍历，则需要借助队列来实现\n```c++\n\n    void LevelOrder(BTree &T)\n    {\n        SqQueue q;\n        InitQueue(q);\n        BTree t = T;\n        EnQueue(q, t);  // 先将根节点入队，\n        while (!QueueEmpty(q))\n        {\n            DeQueue(q, t); // 将结点出队，于此同时将该节点的左右子树的根结点入队 直到队列为空\n            Visit(t);\n            if (t->lchild)\n            {\n                EnQueue(q, t->lchild);\n            }\n            if (t->rchild)\n            {\n                EnQueue(q, t->rchild);\n            }\n        }\n    }\n```\n\n以上对于二叉树的层次遍历使用到了队列来实现。\n\n#### 3.线索二叉树\n在上面说过二叉树的链式存储时n个节点会产生n+1个空链域。线索二叉树就是将这些闲置的空链域利用起来，约定：若节点左子树为空，那么将其左子树指针指向其前驱元素，如柚子树为空，将其指针指向其后继节点，这个过程叫做二叉树的线索化。\n```c++\n    typedef int ElemType;\n    typedef struct BitNode *BitTree;\n    struct BitNode\n    {\n        ElemType data;\n        BTree lchild, rchild;\n        int ltag,rtag; //添加字段ltag，rtag。 0 表示有左右孩子，1表示指向前驱或后继\n        /* data */\n    };\n    typedef BitTree BTree;\n\n    // 中序遍历线索化\n    void InOrder(BTree &T,BTree &pre){ // pre表示其前驱节点\n        if(T!= NULL){\n            if(T->lchild == NULL){ // 左子树为空，则指向前驱节点\n                T->ltag = 1;\n                T->lchild = pre;\n            }\n            if(pre != NULL && pre->rchild == NULL){ // 前驱节点右子树为空，则指向当前节点\n                pre->rtag = 1;\n                pre->rchild = T;\n            }\n            pre = T;\n            InOrder(T->lchild,pre);\n            InOrder(T->rchild,pre);\n        }\n    }\n\n    // 创建线索二叉树\n    void CreateInThread(BTree &T){\n    BTree pre = NULL;  // 初始值设置为NULL\n    if(T){\n        InThread(T,pre);\n        pre->rchild = NULL; // 初始值右节点指向空\n        pre->rtag = 1;\n    }\n}\n\n```\n\n\n\n\n",
+      "data": {
+        "title": "从零开始学数据结构之树（一）",
+        "date": "2019-11-21 21:26:21",
+        "tags": [
+          "数据结构"
+        ],
+        "published": true,
+        "hideInList": false,
+        "feature": "https://tva4.sinaimg.cn/large/0072Vf1pgy1foxk3yu6vwj31kw0w04k5.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "> 树，是一种递归的数据机构，具有一种分层的逻辑结构，适用于表示具有层次关系结构的数据；",
+      "fileName": "cong-ling-kai-shi-xue-shu-ju-jie-gou-zhi-shu"
+    },
+    {
+      "content": "之前学习了队列的顺序存储结构的代码实现，以及循环队列的实现，队列还可以使用链式存储结构来实现，并且链式存储的队列不会出现“溢出”的现象。\n\n<!-- more -->\n\n1. 数据结构如下\n\n```c++\n        typedef int ElemType;\n\n            typedef struct LinkNode *LNode;\n            struct LinkNode\n            {\n                ElemType data;\n                struct LinkNode *next;\n            };\n\n            typedef struct LinkQueue *LQueue;\n            struct LinkQueue\n            {\n                LinkNode *front, *rear;\n            };         \n\n```\n2. 具体代码实现\n\n    1. 队列初始化\n\n```c++\n        void InitQueue(LQueue &q)\n            {\n                LNode L = (LNode)malloc(sizeof(LNode));\n                L->next = NULL;\n                q->front = q->rear = L;\n            }\n```\n\n2. 判断队列是否为空\n\n```c++\n        bool QueueEmpty(LQueue &q)\n            {\n                if (q->front == q->rear)\n                {\n                    return true;\n                }\n                return false;\n            }\n```\n\n3. 入队\n\n```c++\n        bool EnQueue(LQueue &q, ElemType e)\n                {\n                    LNode L = (LNode)malloc(sizeof(LNode));\n                    L->data = e;\n                    L->next = q->rear->next;\n                    q->rear->next = L;\n                    q->rear = L;\n                    return true;\n                }\n```\n\n4. 出队\n```c++\n        bool DeQueue(LQueue &q, ElemType &e)\n                {\n                    if (q->front == q->rear)\n                    {\n                        return false;\n                    }\n                    LNode L = (LNode)malloc(sizeof(LNode));\n                    L = q->front->next;\n                    e = L->data;\n                    q->front->next = L->next;\n                    if (L == q->rear)\n                    {\n                        q->front = q->rear;\n                    }\n                    free(L);\n                    return true;\n                }\n```\n\n\n\n5. 读取队头元素\n\n```c++\n            bool GetHead(LQueue &q, ElemType &e)\n                {\n                    bool flag = QueueEmpty(q);\n                    if (flag)\n                    {\n                        return false;\n                    }\n                    e = q->front->data;\n                    return true;\n                }\n```\n\n队列的链式存储适用于数组元素变动比较大的情形下，而且不存在队列满而产生的数据溢出的情况。\n    \n\n\n",
+      "data": {
+        "title": "从零开始学数据结构之队列（二）",
+        "date": "2019-11-18 18:04:57",
+        "tags": [
+          "数据结构"
+        ],
+        "published": true,
+        "hideInList": false,
+        "feature": "https://tva1.sinaimg.cn/large/0060lm7Tly1fpx1skrabaj31hc0u01kx.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "之前学习了队列的顺序存储结构的代码实现，以及循环队列的实现，队列还可以使用链式存储结构来实现，并且链式存储的队列不会出现“溢出”的现象。",
+      "fileName": "cong-ling-kai-shi-xue-shu-ju-jie-gou-zhi-dui-lie-er"
+    },
+    {
+      "content": "\n队列也是一种操作受限制的线性表，它拥有队首与队尾，并规定只能从队首删除元素（出队），从队尾添加元素（入队），队列的特点就是先进先出(First In First Out)。\n<!-- more -->\n\n1. 首先是队列的顺序存储结构，其数据结构如下\n```c++\n        #define MaxSize 50\n        typedef int ElemType;\n        typedef struct\n        {\n            ElemType data[MaxSize];\n            int front, // 队头 允许出队\n                rear;  // 队尾 允许入队\n        } SqQueue;\n```\n2. 其次是队列的常用操作：\n\n> 同栈的操作一样，先判断一下队列的一些临界状态：\n- 队列为空：则可以通过判断队列的首尾指针来确定，即q.front == q.rear，此时不允许出队。\n- 队列已满：则通过判断队尾指针等于初始分配的最大空间，即q.rear == MaxSize（真的可以吗？🤔），此时不允许入队。\n\n\n具体代码实现如下：\n\n1. 队列初始化\n\n```c++\n            void InitQueue(SqQueue &q)\n                {\n                    q.front = q.rear = 0;\n                }\n```\n\n2. 判断队列是否为空\n\n```c++\n            bool QueueEmpty(SqQueue &q)\n            {\n                if (q.front == q.rear)\n                {\n                    return true;\n                }\n                return false;\n            }\n```\n\n3. 入队\n\n```c++\n            bool EnQueue(SqQueue &q, ElemType e)\n                {\n                    if (q.rear == MaxSize)\n                    {\n                        return false;\n                    }\n                    q.data[q.rear++] = e;\n                    return true;\n                }\n```\n\n4. 出队\n```c++\n            bool DeQueue(SqQueue &q, ElemType &e)\n            {\n                if (q.front == q.rear)\n                {\n                    return false;\n                }\n                e = q.data[q.front--];\n                return true;\n            }\n```\n\n\n\n5. 读取队头元素\n\n```c++\n            bool GetHead(SqQueue &q, ElemType &e)\n                {\n                    bool flag = QueueEmpty(q);\n                    if (flag)\n                    {\n                        return false;\n                    }\n                    e = q.data[q.front];\n                    return true;\n                }\n```\n\n以上看似已经完成了队列的顺序存储，但此时又一个严重的问题就是，当队尾指针q.rear == MaxSize时，再执行出队操作，出队若干元素之后，再执行入队操作时会出现“上溢出”，明明数组data还有闲置的空间，这是一种“假溢出”的现象。那么现在开始，把上面那个data数组想象成一个圆环，将数组的首尾相接形成一个封闭的回路，那么就得到一个循环队列。在循环队列中解决这个问题就方便很多了，有很多的方法🤗，比如说\n1. 在队列中加入一个表示当前存储的元素长度的字段size，\n2. 或者加入一个记录当前操作的字段flag。当flag为1时表示最后一次执行的时出队操作，此时判断q.front == q.rear，则为队空状态；为0时表示最后一次执行的是入队操作，此时判断q.front == q.rear，则为队满的状态。\n3. 还有一种方法就是牺牲一个存储空间，当q.front == q.rear+1时，就表示队列已满，队列为空时则仍是q.front == q.rear；不过之前临界的判断规则需要修改一下😹：\n  - 队列已满：q.front = (q.rear+1)%MaxSize;\n  - 队列元素的个数：count = (q.rear-q.front+MaxSize)%MaxSize;\n\n第三种方法的入队、出队具体代码实现如下：\n\n```c++\n    // 入队\n\n    bool EnQueue(SqQueue &q, ElemType e)\n    {\n        if ((q.rear+1)%MaxSize == q.front) // 此时表示队列已满\n        {\n            return false;\n        }\n        q.data[q.rear] = e;\n        q.rear = (q.rear+1)%MaxSize;\n        return false;\n    }\n\n    // 出队\n\n    bool DeQueue(SqQueue &q, ElemType &e)\n    {\n        if (q.front == q.rear)\n        {\n            return false;\n        }\n        e = q.data[q.front];\n        q.front  = (q.front+1)%MaxSize;\n        return true;\n    }\n```\n\n\n\n\n\n",
+      "data": {
+        "title": "从零开始学数据结构之队列（一）",
+        "date": "2019-11-17 17:16:04",
+        "tags": [
+          "数据结构"
+        ],
+        "published": true,
+        "hideInList": false,
+        "feature": "https://tva2.sinaimg.cn/large/0072Vf1pgy1foxkfbb3c7j31kw0w04ou.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "\n队列也是一种操作受限制的线性表，它拥有队首与队尾，并规定只能从队首删除元素（出队），从队尾添加元素（入队），队列的特点就是先进先出(First In First Out)。",
+      "fileName": "cong-ling-kai-shi-xue-shu-ju-jie-gou-3dui-lie"
+    },
+    {
+      "content": "栈是一种只允许在一端进行插入和删除的线性表，栈也是一种线性表,栈的特点是后进先出(Last In First Out)。\n\n<!-- more -->\n\n\n## 顺序栈\n\n### 首先来确定栈的数据结构\n\n```c++\n    #define MaxSize 50\n    typedef int ElemType;\n    struct SqStack{\n        ElemType data[MaxSize];  \n        int top; // 栈顶指针，初始化时会设置为-1.\n    } ;\n```\n\n然后来确定栈的一些特殊临届状态值：\n1. 栈空状态：约定当栈顶指针s.top == -1 时，表示此时为空栈，不允许再进行出栈操作。\n2. 栈满状态：当栈顶指针s.top == MaxSize-1 时，表示此时栈已满，不允许再进行入栈操作。\n\n然后就可以来进行实现常用的对于栈的操作\n\n#### 初始化空栈\n```c++\n    void InitStack(SqStack &s){\n        s.top = -1;\n    }\n```\n#### 判断是否为空栈\n```c++\n    bool StackEmpty(SqStack &s){\n        if(s.top == -1){\n            return true;\n        }else{\n            return false;\n        }\n    }\n```\n\n#### 入栈操作\n> 入栈时将栈顶指针s.top+1,再将新元素入栈。\n\n```c++\n    bool Push(SqStack &s,ElemType x){\n        if(s.top == MaxSize-1){\n            return false;\n        }\n        s.data[++s.top]=x;\n        return true;\n    }\n```\n#### 出栈操作\n> 出栈时将元素出栈后再将栈顶指针减去一。\n```c++\n    bool Pop(SqStack &s,ElemType &x){\n        if(s.top == -1){\n            return false;\n        }\n        x = s.data[s.top--];\n        return true;\n    }\n```\n\n#### 获取栈顶元素\n```c++\n    bool GetTop(SqStack &s,ElemType &x){\n        if(s.top == -1){\n            return false;\n        }\n        x = s.data[s.top]\n        return true;\n    }\n```\n\n除此之外还有共享栈，利用栈底不变的特性，将两个栈放在同一个一维数据空间内部以达到共享空间的目的。还有栈的链式存储结构与线性表的链式存储结构类似，只是具体实现方面有所不同。\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+      "data": {
+        "title": "从零开始学数据结构之栈",
+        "date": "2019-11-13 20:51:22",
+        "tags": [
+          "数据结构"
+        ],
+        "published": true,
+        "hideInList": false,
+        "feature": "https://tva4.sinaimg.cn/large/0072Vf1pgy1foxlhbqhasj31hc0u0qjw.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "栈是一种只允许在一端进行插入和删除的线性表，栈也是一种线性表,栈的特点是后进先出(Last In First Out)。",
+      "fileName": "cong-ling-kai-shi-xue-shu-ju-jie-gou-2-zhan"
+    },
+    {
+      "content": "线性表是一种线性存储结构的，除了首位元素，每一个元素都有一个直接前驱；除了末尾元素，每一个元素都有一个直接后继。\n\n<!-- more -->\n\n```\n // 对于线性表的常用操作如下\n\t InitList(&L)  初始化线性表\n\t Lenght(&L) 返回表长\n\t LocateElem(&L,e) 按值来查找元素，在表L中查找指定元素\n\t GetElem(&L,i) 按序号查找元素，在表L查找指定位置的元素\n\t ListInsert(&L,i,e) 将元素e插如表L的指定位置i处\n\t ListDelete(&L,i,&e) 将表L的第i个元素删除并用e返回删除元素的值\n\t PrintfList(&L) 打印线性表L\n\t Empty(&L) 判断线性表L是否为空，空则返回true，否则返回false\n\t DestoryList(&L) 销毁线性表L\n```\n\n# 1.顺序表\n>顺序表是一种顺序存储结构的线性表，顺序表的逻辑相邻的两个元素在存储在物理结构上也相邻。\n### 1. 顺序表的数据结构\n```c++\n\t\t#define MaxSize 50\n\t\ttypedef struct sq *SqList;\n\t\tstruct sq {\n\t\t\t\tElemType data[MaxSize];\n\t\t\t\tint Length;\n\t\t};\n\t\ttypedef SqList SL;\n```\n\n### 2.    顺序表的常用操作\n#### \t按值查找\n```c++\n\n\tint LocateElem(SL &L, ElemType e){\n\t\t\tif(!L->Length){\n\t\t\t\t\treturn 0;\n\t\t\t}\n\t\t\tfor(int i = 0; i< L->Length; i++){\n\t\t\t\t\tif(L->data[i] == e){\n\t\t\t\t\t\t\treturn i+1;  // 线性表的元素是从下标为1开始计算，而数组是从下标0\n\t\t\t\t\t\t\t//开始计算，此处返回元素下标时应该加上1才能对应元素在线性表中的\n\t\t\t\t\t\t\t//下标\n\t\t\t\t\t}\n\t\t\t}\n\t\t\treturn 0;\n\t}\n```\n#### 按序号查找\n\n```c++\n\t\n\tElemType GetElem(SL &L,int i, ElemType e){\n\t\t\tif(i == 0){\n\t\t\t\t\te = L->data[0];\n\t\t\t\t\treturn e;\n\t\t\t}\n\t\t\tif(!L->Length || i<1 || i > L->Length){\n\t\t\t\t\treturn e;\n\t\t\t}\n\t\t\te = L->data[i-1];\n\t\t\treturn e;\n\t}\n```\n\n#### 插入操作\n\n```\n\t\tint ListInsert(SL &L, int i, ElemType e)\n\t\t{\n\t\t\t\tif (L->Length == MaxSize)  // 线性表已满 不允许插入操作\n\t\t\t\t{\n\t\t\t\t\t\treturn 0;\n\t\t\t\t}\n\t\t\t\tif (i < 1 || i > L->Length+1)  // 超出线性表当前范围 不允许插入操作\n\t\t\t\t{\n\t\t\t\t\t\treturn 0;\n\t\t\t\t}\n\t\t\t\tfor (int j = L->Length; j >= i; j--)\n\t\t\t\t{\n\t\t\t\t\t\tL->data[j] = L->data[j - 1];\n\t\t\t\t}\n\t\t\t\tL->data[i - 1] = e;\n\t\t\t\tL->Length++;\n\t\t\t\treturn 1;\n\t\t}\n```\n\n#### 删除操作\n\n```\nint ListDelete(SL &L, int i, ElemType &e)\n{\n    if (L->Length == 0 || i > L->Length + 1)\n    {\n        return 0;\n    }\n    e = L->data[i - 1];\n    for (int j = i - 1; j < L->Length; j++)\n    {\n        L->data[j] = L->data[j + 1];\n    }\n    L->Length--;\n    return 1;\n}\n```\n\n#  2.链表\n>由于顺序表的插入和删除操作需要移动大量的元素，影响运行效率，线性表的链式结构存储时不需要逻辑上相邻的两个元素在物理位置上也相邻。\n### \t\t1.单链表的数据结构\n```c++\n\ttypedef struct LNode *LinkList;\n\tstruct LNode {\n\t\t\tElemType data;\n\t\t\tLNode *next;\n\t};\n\ttypedef LinkList List;\n```\n2. 单链表的常用操作\n#### 创建单链表\n1. 头插法创建\n\n```\n// 头插法\nList HeadInsert(List &L)\n{\n    List p, s; // p为头指针\n    int n = 20, i = 1;\n    p = (List)malloc(sizeof(struct LNode));\n    p = L;\n    p->next = NULL; // 初始为空表\n    // scanf(\"%d\",&n);\n    while (i < n)\n    {\n        s = (List)malloc(sizeof(struct LNode));\n        s->data = i;\n        s->next = p->next;\n        p->next = s;\n        i++;\n    }\n    return p;\n}\n```\n2. 尾插法\n\n```\n//  尾插法\nList TailInsert(List &L)\n{\n    List p, s; // 此处p为尾指针\n    int n = 10, i = 1;\n    p = (List)malloc(sizeof(struct LNode));\n    p = L;\n    // scanf(\"%d\",&n);\n    while (i < n)\n    {\n        s = (List)malloc(sizeof(struct LNode));\n        s->data = i;\n        p->next = s;\n        p = s;\n        i++;\n    }\n    p->next = NULL; // 尾节点指针置空\n    return L;\n}\n```\n\n\n####  \t按值查找\n```c\n\n\tList LocateElem(List &L, ElemType e){\n\t\t\tList p = (List)malloc(sizeof(struct LNode));\n\t\t\tp = L;\n\t\t\twhile(p && p->data != e){\n\t\t\t\t\tp = p->next;\n\t\t\t}\n\t\t\treturn p;\n\t}\n\n```\n\n#### 按序号查找\n> 返回目标节点指针\n```\nList GetElem(List &L, int i)\n{\n    LNode *p = (List)malloc(sizeof(struct LNode));\n    p = L->next; // 头节点指针赋值给p\n    int j = 1;\n    if (i == 0)\n    {\n        return p;\n    }\n    if (i < 1)\n    {\n        return NULL; // 若i 小于1且不为0，则i无效，返回NULL；\n    }\n    while (p && j < i)\n    {\n        j++;\n        p = p->next;\n    }\n    return p;\n}\n```\n\n#### 插入元素\n> 插入元素只需要修改指针指向即可\n```\nList ListInsert(List &L, int i, ElemType e)\n{\n    List p, s;\n    s = (List)malloc(sizeof(struct LNode));\n    s->data = e;\n    if (i == 0 || i == 1)\n    {\n        p = L;\n    }\n    else if (i < 1)\n    {\n        return NULL;\n    }\n    else\n    {\n        p = GetElem(L, i - 1);\n    }\n    s->next = p->next;\n    p->next = s;\n    return s;\n}\n```\n> tip:如果已知当前元素的指针，对于前插操作，链表需要遍历整个链表，此时的时间复杂度为O(n),如果换个思路，可以将元素插入目标位置之后，然后将前后两元素内部的数据进行互换同样可以完成目标✅，而此时的时间复杂度为O(1)\n\t\n####  删除元素\n\n```\nList ListDelete(List &L, int i)\n{\n    List p, s;\n    s = (List)malloc(sizeof(struct LNode));\n    if (i == 0 || i == 1)\n    {\n        p = L;\n    }\n    else if (i < 1)\n    {\n        return NULL;\n    }\n    else\n    {\n        p = GetElem(L, i - 1);\n    }\n    s = p->next;\n    p->next = s->next;\n    free(s);\n}\n```\n\n线性表除了可以用顺序表、单链表之外还有更加方便各种操作的**双链表**、**循环链表**、**循环单链表**、**循环双链表**、**静态链表**等等。总之线性表是基础、超级重要啊啊啊！！！\n\n\n\n\n",
+      "data": {
+        "title": "从零开始学数据结构之线性表",
+        "date": "2019-11-10 20:50:01",
+        "tags": [
+          "数据结构"
+        ],
+        "published": true,
+        "hideInList": false,
+        "feature": "https://tva4.sinaimg.cn/large/0072Vf1pgy1fodqo0e8fzj31hc0xcqv5.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "线性表是一种线性存储结构的，除了首位元素，每一个元素都有一个直接前驱；除了末尾元素，每一个元素都有一个直接后继。",
+      "fileName": "cong-ling-kai-shi-xue-shu-ju-jie-gou-1-xian-xing-biao"
+    },
+    {
+      "content": "> 使用webpack引入第三方包，可以使用webpack内部自带的插件ProvidePlugin来实现\n\n<!-- more -->\n\n### 1.使用webpack.ProvidePlugin来实现\n\nwebpack.ProvidePlugin会将引入的第三方包加载到每一个模块内，所以当此时调用wendow.$时会出现undefined，只需要在webpack.config.js文件中引入webpack再在plugins中添加即可\n\t\t\t\n```javascript\nconst webpack = require(\"webpack\");\n\tmodule.exports = {\n    ...\n    plugins: [\n        new webpack.ProvidePlugin({\n            $: 'jquery',\n            jQuery: 'jquery'\n        })\n    ],\n\t\t  ...\n}\n```\n",
+      "data": {
+        "title": "webpack引入第三方包",
+        "date": "2019-11-08 19:29:29",
+        "tags": [
+          "webpack",
+          "自动化工具"
+        ],
+        "published": true,
+        "hideInList": true,
+        "feature": "https://tva3.sinaimg.cn/large/0072Vf1pgy1foxkiak921j31kw0w0nnl.jpg",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "> 使用webpack引入第三方包，可以使用webpack内部自带的插件ProvidePlugin来实现",
+      "fileName": "webpack-yin-ru-di-san-fang-bao"
+    },
+    {
+      "content": "> 欢迎来到我的小站呀，很高兴遇见你！🤝\n\n## 🏠 关于本站\n\n## 👨‍💻 博主是谁\n\n## ⛹ 兴趣爱好\n\n## 📬 联系我呀\n",
+      "data": {
+        "title": "关于",
+        "date": "2019-01-25 19:09:48",
+        "tags": null,
+        "published": true,
+        "hideInList": true,
+        "feature": null,
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "",
+      "fileName": "about"
+    },
+    {
+      "content": "👏  欢迎使用 **Gridea** ！  \n✍️  **Gridea** 一个静态博客写作客户端。你可以用它来记录你的生活、心情、知识、笔记、创意... ... \n\n<!-- more -->\n\n[Github](https://github.com/getgridea/gridea)  \n[Gridea 主页](https://gridea.dev/)  \n[示例网站](http://fehey.com/)\n\n## 特性👇\n📝  你可以使用最酷的 **Markdown** 语法，进行快速创作  \n\n🌉  你可以给文章配上精美的封面图和在文章任意位置插入图片  \n\n🏷️  你可以对文章进行标签分组  \n\n📋  你可以自定义菜单，甚至可以创建外部链接菜单  \n\n💻  你可以在 **Windows**，**MacOS** 或 **Linux** 设备上使用此客户端  \n\n🌎  你可以使用 **𝖦𝗂𝗍𝗁𝗎𝖻 𝖯𝖺𝗀𝖾𝗌** 或 **Coding Pages** 向世界展示，未来将支持更多平台  \n\n💬  你可以进行简单的配置，接入 [Gitalk](https://github.com/gitalk/gitalk) 或 [DisqusJS](https://github.com/SukkaW/DisqusJS) 评论系统  \n\n🇬🇧  你可以使用**中文简体**或**英语**  \n\n🌁  你可以任意使用应用内默认主题或任意第三方主题，强大的主题自定义能力  \n\n🖥  你可以自定义源文件夹，利用 OneDrive、百度网盘、iCloud、Dropbox 等进行多设备同步  \n\n🌱 当然 **Gridea** 还很年轻，有很多不足，但请相信，它会不停向前 🏃\n\n未来，它一定会成为你离不开的伙伴\n\n尽情发挥你的才华吧！\n\n😘 Enjoy~\n",
+      "data": {
+        "title": "Hello Gridea",
+        "date": "2018-12-12 00:00:00",
+        "tags": [
+          "Gridea"
+        ],
+        "published": true,
+        "hideInList": true,
+        "feature": "/post-images/hello-gridea.png",
+        "isTop": false
+      },
+      "isEmpty": false,
+      "excerpt": "",
+      "abstract": "👏  欢迎使用 **Gridea** ！  \n✍️  **Gridea** 一个静态博客写作客户端。你可以用它来记录你的生活、心情、知识、笔记、创意... ... ",
+      "fileName": "hello-gridea"
+    }
+  ],
+  "tags": [
+    {
+      "name": "数据结构",
+      "slug": "aI5js9XX5",
+      "used": true
+    },
+    {
+      "name": "webpack",
+      "slug": "yoErpZfR1D",
+      "used": true
+    },
+    {
+      "name": "自动化工具",
+      "slug": "c0UuC3KcL0",
+      "used": true
+    },
+    {
+      "name": "jQuery",
+      "slug": "b55kLl7ps",
+      "used": true
+    },
+    {
+      "name": "Javascript",
+      "slug": "ySDQ60qvau",
+      "used": true
+    },
+    {
+      "name": "Gridea",
+      "slug": "bSRi7LIwF",
+      "used": true
+    }
+  ],
+  "menus": [
+    {
+      "link": "/",
+      "name": "首页",
+      "openType": "Internal"
+    },
+    {
+      "link": "/archives",
+      "name": "归档",
+      "openType": "Internal"
+    },
+    {
+      "link": "/tags",
+      "name": "标签",
+      "openType": "Internal"
+    },
+    {
+      "link": "/post/about",
+      "name": "关于",
+      "openType": "Internal"
+    }
+  ]
+}

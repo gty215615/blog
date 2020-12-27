@@ -1,0 +1,29 @@
+{
+  "config": {
+    "branch": "master",
+    "cname": "zuimo1024.com",
+    "domain": "https://zuimo1024.com",
+    "email": "1573801768@qq.com",
+    "platform": "coding",
+    "privateKey": "",
+    "repository": "blog",
+    "token": "34bd35bb02b8c070914ead880615bb3735606c95",
+    "tokenUsername": "iotPlZQnGb",
+    "username": "guotingyan/blog"
+  },
+  "comment": {
+    "commentPlatform": "gitalk",
+    "disqusSetting": {
+      "api": "",
+      "apikey": "",
+      "shortname": ""
+    },
+    "gitalkSetting": {
+      "clientId": "",
+      "clientSecret": "",
+      "owner": "",
+      "repository": ""
+    },
+    "showComment": false
+  }
+}
